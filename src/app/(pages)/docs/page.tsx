@@ -1,0 +1,404 @@
+"use client";
+
+import { HeaderBlock } from "@/components/hud/pages/HeaderBlock";
+import { TextBlock } from "@/components/hud/pages/TextBlock";
+import { useSatMapStore } from "@/store/satmapStore";
+import { SuccessBlock } from "@/components/hud/pages/SuccessBlock";
+import { CautionBlock } from "@/components/hud/pages/CautionBlock";
+
+const DocsPage = () => {
+  const menuOpen = useSatMapStore((s) => s.menuOpen);
+
+  return (
+    <div
+      className={`absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 pointer-events-auto w-3/4 md:w-[60%] lg:w-1/2 max-h-3/4 ${
+        menuOpen ? "invisible" : "visible"
+      }`}
+    >
+      <HeaderBlock header="Docs v1.0 (under construction)" />
+
+      <div className="flex flex-col gap-2.5 overflow-y-auto">
+        {/* <SuccessBlock eyebrow={null}>SATMAP7 v1.0 is stable.</SuccessBlock> */}
+
+        <TextBlock eyebrow="1. Application Hierarchy">
+          <>
+            <p>A hierarchical overview of SATMAP7's codebase.</p>
+            <br />
+
+            <p>1.1 SATMAP7 HIERARCHY</p>
+            <br />
+            <div>
+              <p>
+                SATMAP7's implementation is intentionally broken down into 6
+                layers of abstraction. Each layer is listed below. The remaining
+                sections 2-7 of the documentation delves into each abstraction
+                layer in more depth.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <ol className="pl-7.5 list-decimal">
+                  <li>UI/HUD Layer (section 2)</li>
+                  <li>State Layer (section 3)</li>
+                  <li>Graphics Layer (section 4)</li>
+                  <li>Controller Layer (section 5)</li>
+                  <li>Data Layer (section 6)</li>
+                  <li>Types Layer (section 7)</li>
+                </ol>
+                <br />
+              </div>
+
+              <p>
+                This documentations page is both a user manual and project
+                blueprint.
+              </p>
+              <br />
+            </div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="2. UI/HUD Layer">
+          <>
+            <p>A manual on SATMAP7's tracker UI layout.</p>
+            <br />
+
+            <p>2.1 DESKTOP LAYOUT</p>
+            <br />
+            <div>
+              <p>
+                On desktop, the HUD overlay features a double-panel UI for both
+                the default exploration mode and satellite selection mode. The
+                exploration mode is engaged the moment that the user opens the
+                tracker page. The satellite selection mode is engaged when a
+                user selects a satellite for more detailed information.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  2.1.1 In the default mode, the left panel displays
+                  application-specific statistics - this panel is called the
+                  Stats Bar. The right panel is the Category Side Bar, which
+                  renders the list of artificial constellations this application
+                  tracks. There are 7 constellations as of v1.0. Selecting or
+                  deselecting an artificial constellation list item toggles its
+                  visibility in the scene.
+                </p>
+                <br />
+
+                <p>
+                  2.1.2 Selecting a satellite enteres the satellite-selection
+                  mode. Entering satellite selection mode triggers both a HUD
+                  overlay change and camera reposition animation. More on the
+                  camera reposition animation shortly. The transition to the
+                  satellite selection HUD is immediate. The left side panel
+                  features key satellite statistics - this panel is called the
+                  Satellite Information Panel. The right panel features
+                  satellite media information, including a satellite-specific
+                  descriptor and constellation-specific image file - this panel
+                  is called the Satellite Media Panel.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  Note: The camera reposition animation is a simple
+                  interpolation animation that runs every animation frame until
+                  either a threshold distance is reached or user controls
+                  preemptively override and terminate the interpolation
+                  sequence.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>2.2 TABLET/MOBILE LAYOUT</p>
+            <br />
+            <div>
+              <p>
+                In mobile or tablet view, the HUD overlay design, for both
+                default and selection mode, changes entirely to a minimal
+                toolbox kit design in order to free up screen estate as much as
+                possible. All of the same panels from desktop are still
+                available in the mobile toolbox-kit design. Depending on the
+                mode, simply select the desired toolbox on the left hand side of
+                the screen to display the desired panel component overlayed on
+                top of the scene.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  2.2.1 Default Mode Toolbox Kit: There are 3 toolboxes in the
+                  default mode. From top to bottom, they correspond to: Stats
+                  Panel (application-level information), Category Panel (toggle
+                  artificial constellations), and Control Hints panel. Note that
+                  desktop control hints are already available in the left Bottom
+                  Bar for a desktop viewport.
+                </p>
+                <br />
+
+                <p>
+                  2.2.2 Selection Mode Toolbox Kit: There are 4 toolboxes in the
+                  selection mode. From to bottom, they correspond to: Satellite
+                  Information Panel (satellite-level meta data), Satellite Media
+                  Panel (high-level descriptors), Category Panel, and Control
+                  Hints Panel. As you may have noticed, the Category Panel and
+                  Control Hints Panel are available as toolboxes for both modes
+                  in the mobile viewport.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>2.3 SHARED COMPONENTS</p>
+            <br />
+            <div>
+              <p>
+                In all viewports (desktop, tablet, mobile) there are 3 primary
+                HUD overlay components that persist without a major design
+                change. They are the Orbital Trail Controls, Search Bar, and
+                Deselection Chip.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  2.3.1 Orbit Trail Conrols: The orbital controls have 4
+                  options: None, History, Full Orbit, and Both. They regard the
+                  rendering of a polyline that visualize a satellite's
+                  historical and/or predicted path through space. The orbital
+                  line(s) are only rendered once a satellit is selected, during
+                  satellite selection mode. The History line draws the selected
+                  satellite's path during the last 90 minutes. The Full Orbit
+                  lines draws the satellite's predicted path forward in time to
+                  complete a full orbital period around the Earth.
+                </p>
+                <br />
+                <p>
+                  2.3.2 Search Bar: The search bar enables you to search for a
+                  satellite by either its satellite name or NORAD ID. Selecting
+                  a satellite from the search bar dropdown menu enters the
+                  satellite selection mode. And naturally, as discussed in
+                  section 2.1.2 and/or 2.2.2, this doubly triggers both a camera
+                  reposition animation and HUD overlay change. The camera
+                  reposition animation centers your view onto the selected
+                  satellite.
+                </p>
+                <br />
+                <p>
+                  2.3.3 Deselection Chip: The deselection chip is located at the
+                  top right hand side of the scene for all viewports. It renders
+                  when you are in the satellite-selection mode. Selecting the
+                  deselection chip exits the satellite selection mode and
+                  returns you to the default exploration mode. In desktop, You
+                  may also return to the default mode by clicking the "X" icon
+                  located in the header of the left Satellite Information Side
+                  Bar. For mobile or tablet, it is the only way to exit the
+                  satellite selection mode.
+                </p>
+                <br />
+              </div>
+            </div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="3. State Layer">
+          <>
+            <p>A blueprint of SATMAP7's state management.</p>
+            <br />
+
+            <p>3.1 GLOBAL STATE MANAGEMENT</p>
+            <br />
+            <div></div>
+
+            <p>3.2 LOCAL STATE MANAGEMENT</p>
+            <br />
+            <div></div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="4. Graphics Layer">
+          <>
+            <p>An outline of the 3D graphics scene implementation.</p>
+            <br />
+
+            <p>3.1 Earth Texture Shaders</p>
+            <br />
+            <div></div>
+
+            <p>3.2 Satellite Propagation</p>
+            <br />
+            <div></div>
+
+            <p>3.3 Orbit Controls</p>
+            <br />
+            <div></div>
+
+            <p>3.4 Satellite Selection Animation</p>
+            <br />
+            <div></div>
+
+            <p>3.5 Starfield Background</p>
+            <br />
+            <div></div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="5. Controller Layer">
+          <>
+            <p>Propagation logic, search logic, TLE parsing, and more.</p>
+            <br />
+
+            <p>3.1 Propagation</p>
+            <br />
+            <div></div>
+
+            <p>3.2 Search</p>
+            <br />
+            <div></div>
+
+            <p>3.3 TLE Parsing</p>
+            <br />
+            <div></div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="6. Data Layer">
+          <>
+            <p>Fetching, Caching, and Data Processing</p>
+            <br />
+
+            <p>4.1 Caching Protocol</p>
+            <br />
+
+            <p>
+              SATMAP7 features multi-layer caching in order to improve user
+              experience and avoid overloading external servers. Section 4
+              briefly outlines some of the caching decisions made for v1.0.
+            </p>
+            <br />
+
+            <div className="p-2.5">
+              <p>
+                4.1.1 In order to avoid 403 and 503 errors, SATMAP7 caches
+                satellite records with a TTL of 24 hours despite CelesTrak
+                updating their data every 2 hours (to the best of the
+                developer's knowledge). This decision was driven by the
+                empirical observation of a non-trivial chance that CelesTrak's
+                servers might be unavailable. This implies that SATMAP7 accepts
+                a slight tradeoff to maximize connection reliability in exchange
+                for propagation precision (Redis connections appear more
+                reliable than CelesTrak).
+              </p>
+              <br />
+
+              <p className="text-[10px]">
+                NOTE: the decision to increase the TTL is also out of a
+                thoughtfulness to avoid overloading CelesTrak servers. Note that
+                a TLE update every 24 hours in a satellite propagation context
+                is fine for educative purposes but is not suitable for
+                high-precision tracking such as a collision prediction system.
+              </p>
+              <br />
+
+              <p>
+                4.1.2 Satellite-specific semantic descriptors are cached with a
+                TTL of a week on Redis. In a future revision, they may be cached
+                indefinitely to reduce latency. Other media data are not cached
+                but are either stored on SATMAP7's own server (Earth texture
+                images) or encoded as indefinite hardcoded links
+                (constellation-specific WikiMedia files).
+              </p>
+              <br />
+
+              <p>
+                4.1.3 Search results are also cached on Redis but with a brief
+                TTL of 5 minutes. Caching search results are necessary because
+                all relevant search operations are executed on SATMAP7's server.
+                This includes fetching records from Redis (or CelesTrak),
+                reconstructing the dataset, and then applying the string search
+                filter. In a future revision such as v1.1, some of the relevant
+                search operations may be moved to the client end in order to
+                mitigate the possibility of some record alignment catastrophes.
+                See below.
+              </p>
+              <br />
+
+              <p className="text-[#fb923c] text-[11px]">
+                NOTICE: SATMAP7 v1.0 is theoretically prone to a server-client
+                satellite record misalignment bug. If redis or zustand records
+                are ever misaligned then searching could fail or lead to
+                undefined behaviours. i.e., Redis fetches new data from
+                CelesTrak but drops a satellite. Zustand persists and has
+                satellite that same satellite still in the store. Then a user
+                searching for the satellite record won't find it in the search
+                results despite it's existence on the tracker.
+              </p>
+              <br />
+
+              <p className="text-[#fb923c] text-[11px]">
+                A more malevolent possibility can occur if Zustand fails. i.e.,
+                Redis has complete, well-formed data but Zustand drops a
+                satellite record. Then when a user searches for a dropped
+                satellite record, the result appears on the server but not on
+                Zustand (the tracker).
+              </p>
+              <br />
+            </div>
+
+            <p>3.2 Data Fetching</p>
+            <br />
+            <div></div>
+
+            <p>3.3 Data Normalization</p>
+            <br />
+            <div></div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="7. Types Layer">
+          <>
+            <p>The definitions of SATMAP7.</p>
+            <br />
+
+            <p>3.1 Types overview</p>
+            <br />
+            <div></div>
+          </>
+        </TextBlock>
+
+        <TextBlock eyebrow="8. Application Status">
+          <>
+            <p>Version control logs.</p>
+            <br />
+
+            <p>8.1 Status</p>
+            <br />
+            <div className="p-2.5">
+              <p className="text-[#39ff14] text-[11px]">
+                STATUS: SATMAP7 v1.0 is stable.
+              </p>
+              <br />
+            </div>
+
+            <p>8.2 Developer Notes</p>
+            <br />
+            <div className="p-2.5">
+              <p className="text-[#fb923c] text-[11px]">
+                NOTICE: SATMAP7 v1.0 is theoretically prone to a client-only
+                satellite record misalignment bug. A satellite record may be
+                dropped in the rare event of a propagation calculation error.
+                This error has never occurred in practice, and would generally
+                need to be induced manually. Nevertheless, a preemptive patch
+                will be deployed in an upcoming v1.1 update.
+              </p>
+              <br />
+            </div>
+          </>
+        </TextBlock>
+      </div>
+    </div>
+  );
+};
+
+export default DocsPage;

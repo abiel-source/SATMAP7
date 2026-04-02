@@ -1,0 +1,278 @@
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - AUTHOR NOTES - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// NOTE ON MEMORY: 2 copies of satellites, 1 copy of GPU-renderable satellites
+// records --> zustand source of truth after initial API fetch (static)
+// propagated --> zustand satellite map of satellite positions (dynamic) - components read this
+// geometryBuffer/posArray --> GPU renders of satellites updated every second locally here
+
+// NOTE ON custom raycast PROP:
+// Temporarily sets the radius smaller to 0.012 scene units and restores default
+// If theres a hit then our custom callbacks get called, which write to zustand
+
+// NOTE ON pointsRef:
+// pointsRef references to the <points> object
+// it is required for performance since it allows updates whenever we want independent of React renders
+// we use it in R3F's useFrame to (re)propagate and overwrite satellite positions each animation frame directly in pointsRef.current
+// conceptually: move satellite redraws up from React state-like re-renders to animation frames
+
+// OPTIMIZATION: ZUSTAND SUBSCRIPTION
+// zustand subscription actually triggers re-renders...
+// this is avoided by simply reading the propagated map - no susbcription
+
+// OPTIMIZATION: THREE.JS BOUNDARY SPHERE
+// avoid comuting boundary sphere for every animation loop. This is expensive as satellites scale.
+// there's a trick to computing it once only, even as vertices mutate... See below
+
+// OPTIMIZATION: SATELLITE PROPAGATION ANIMATION
+// "Primary" satellite propagation occurs once per second (1 of 60 animation frames)
+// including zustand read/write + batch propagation...
+
+// Add "secondary" satellite propagation for animation only. (30~60 of animation frames)
+// local GeometryBuffer overwrites only - NO zustand read/write NO batch propagation
+// do FAST SIMPLE linear interpolation and/or linear algebra
+
+// ---------------------------------------------------------------------------------------
+
+// Possibly split "secondary" satellite propagation into an additional "tertiary" level.
+// distinguish between batch propagation, zustand overwrite, and fast manual linear algebra.
+
+// "Secondary" satellite propagation --> batch propagation without zustand overwrite
+// "Teritary" satellite propagation --> manual linear algebra for direct buffer overwrite
+
+// could even precompute buffer ahead of time (secondary propagation) and linearly interpolate
+// between to target buffer for each remaining animation frame (tertiary propagation).
+
+// DECIDE WHICH IS BEST...
+// WAIT - the precompute ahead of time is superior...
+// you only need to execute primary propagation ONCE in the initial frame!
+// then you can store 2 position buffers - one for next and one for current
+// then for each primary frame you just swap "next" and "current" then
+// precompute "next" just once! The linear interpolation method should be smoother (in theory)
+// than manual linear algebra. Woahhh
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+"use client";
+
+import { useRef, useMemo, useCallback } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import * as THREE from "three";
+import { useSatMapStore } from "@/store/satmapStore";
+import { propagateBatch } from "@/lib/satellite/propagation";
+import type { SatelliteCategory, SatelliteRecord } from "@/types/satellite";
+import { CATEGORY_META } from "@/types/satellite";
+
+// How often to re-propagate (ms)
+// const PROPAGATION_INTERVAL = 1000;
+const PROPAGATION_INTERVAL = 500;
+
+interface SatellitePointsProps {
+  category: SatelliteCategory;
+}
+
+export function SatellitePoints({ category }: SatellitePointsProps) {
+  const pointsRef = useRef<THREE.Points>(null);
+  const lastPropTime = useRef(0);
+
+  const records = useSatMapStore((s) => s.categories[category].records);
+  const visible = useSatMapStore((s) => s.categories[category].visible);
+  const hoveredSatellite = useSatMapStore((s) => s.hoveredSatellite);
+  const setHovered = useSatMapStore((s) => s.setHovered);
+  const setSelected = useSatMapStore((s) => s.setSelected);
+  const setPropagated = useSatMapStore((s) => s.setPropagated);
+  // const propagated = useSatMapStore((s) => s.propagated);
+
+  const { raycaster, camera } = useThree();
+
+  const catColor = useMemo(
+    () => new THREE.Color(CATEGORY_META[category].hexColor),
+    [category]
+  );
+
+  const material = useMemo(
+    () =>
+      new THREE.PointsMaterial({
+        size: category === "stations" ? 0.015 : 0.006,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.9,
+        sizeAttenuation: true,
+        depthWrite: false,
+      }),
+    [category]
+  );
+
+  const earthSphere = useMemo(
+    () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
+    []
+  );
+
+  // simple occlusion check is logically sufficient
+  const isOccluded = useCallback(
+    (position: [number, number, number]): boolean => {
+      const satPos = new THREE.Vector3(...position);
+      const dir = satPos.clone().sub(camera.position).normalize();
+      const ray = new THREE.Ray(camera.position, dir);
+      const hit = new THREE.Vector3();
+      // ray never hits earth
+      if (!ray.intersectSphere(earthSphere, hit)) return false;
+      // ray hits earth; check if we hit the earth FIRST
+      return (
+        hit.distanceTo(camera.position) < satPos.distanceTo(camera.position)
+      );
+    },
+    [camera, earthSphere]
+  );
+
+  // Build geometry buffers
+  const { geometry, posArray } = useMemo(() => {
+    const count = records.length;
+    const geo = new THREE.BufferGeometry();
+
+    const pos = new Float32Array(count * 3);
+    const cols = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = 0;
+      pos[i * 3 + 1] = 0;
+      pos[i * 3 + 2] = 0;
+      cols[i * 3] = catColor.r;
+      cols[i * 3 + 1] = catColor.g;
+      cols[i * 3 + 2] = catColor.b;
+      sizes[i] = category === "stations" ? 0.015 : 0.006;
+    }
+
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+    geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+
+    // manually compute the bounding sphere once
+    // earth radius ~ 6,371km = 1.0 units
+    // GEO distance ~ 35,786 = (35,786km + 6,371km / 6,371km) = 6.62 units
+    // round to about 7 units for now (don't overdo it)
+    //
+    // max altitude may vary when new satellites are added
+    // might actually be better to put this in the environment variables
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 7.0);
+
+    return { geometry: geo, posArray: pos };
+  }, [records, catColor, category]);
+
+  // main animation frame
+  useFrame((_, delta) => {
+    if (!pointsRef.current || !visible || records.length === 0) return;
+
+    const now = performance.now();
+    if (now - lastPropTime.current < PROPAGATION_INTERVAL) {
+      // OPTIMIZATION: local BufferGeometry overwrites only
+      // ...
+      return;
+    }
+    lastPropTime.current = now;
+
+    const date = new Date();
+    const batch = propagateBatch(records, date);
+
+    // Update positions
+    const posAttr = pointsRef.current.geometry.attributes
+      .position as THREE.BufferAttribute;
+
+    // const nextPropagated = new Map(propagated);
+    const nextPropagated = new Map(useSatMapStore.getState().propagated);
+
+    for (let i = 0; i < batch.length; i++) {
+      const p = batch[i];
+      posAttr.setXYZ(i, p.position[0], p.position[1], p.position[2]);
+      nextPropagated.set(p.noradId, p);
+    }
+
+    posAttr.needsUpdate = true;
+
+    // MANUALLY RECOMPUTE: since geometry vertices (positions specifically) are modified
+    // as stated in the docs: https://threejs.org/docs/#BufferGeometry.computeBoundingSphere
+    // OPTIMIZED: https://discourse.threejs.org/t/boundingsphere-and-boundingbox/17868/2
+    // pointsRef.current.geometry.computeBoundingSphere();
+
+    setPropagated(nextPropagated);
+  });
+
+  // hover/select handlers
+  const handlePointerMove = useCallback(
+    (e: { index?: number }) => {
+      if (e.index === undefined || !records[e.index]) {
+        return;
+      }
+      const sat = records[e.index];
+      const propSat = useSatMapStore.getState().propagated.get(sat.noradId);
+      if (!propSat || isOccluded(propSat.position)) {
+        return;
+      }
+      setHovered(sat);
+    },
+    [records, setHovered, isOccluded]
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    // if (hoveredSatellite?.category === category) {
+    //   setHovered(null);
+    // }
+
+    setHovered(null);
+  }, [setHovered, hoveredSatellite, category]);
+
+  const handleClick = useCallback(
+    (e: { index?: number }) => {
+      if (e.index === undefined || !records[e.index]) {
+        return;
+      }
+      const sat = records[e.index];
+      const propSat = useSatMapStore.getState().propagated.get(sat.noradId);
+      if (!propSat || isOccluded(propSat.position)) {
+        return;
+      }
+
+      setSelected(sat);
+    },
+    [records, setSelected, isOccluded]
+  );
+
+  if (!visible || records.length === 0) return null;
+
+  return (
+    <points
+      ref={pointsRef}
+      geometry={geometry}
+      material={material}
+      // frustumCulled={false} // disables optimization; for testing only
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      onClick={handleClick}
+      raycast={(raycaster, intersects) => {
+        if (!pointsRef.current) return;
+
+        const threshold = category === "stations" ? 0.02 : 0.015;
+
+        const params = raycaster.params.Points ?? { threshold: 1 };
+        const originalThreshold = params.threshold;
+
+        params.threshold = threshold;
+        raycaster.params.Points = params;
+
+        THREE.Points.prototype.raycast.call(
+          pointsRef.current,
+          raycaster,
+          intersects
+        );
+
+        params.threshold = originalThreshold;
+        raycaster.params.Points = params;
+      }}
+    />
+  );
+}
