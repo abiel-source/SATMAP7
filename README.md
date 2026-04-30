@@ -19,6 +19,10 @@
 
 </div>
 
+<p align="center">
+  <img src="public/demo.gif" width="650" alt="SATMAP7 Demo" />
+</p>
+
 A real-time 3D satellite tracker rendered on an interactive WebGL globe. SATMAP7 pulls live Two-Line Element (TLE) data from CelesTrak, propagates thousands of satellite positions client-side using the SGP4 algorithm, and renders them across 7 color-coded constellations on a photorealistic Earth — all at 60 fps.
 
 <details>
