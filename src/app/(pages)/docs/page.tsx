@@ -782,9 +782,68 @@ const DocsPage = () => {
             <p>The definitions of SATMAP7.</p>
             <br />
 
-            <p>3.1 Types overview</p>
+            <p>7.1 TYPES OVERVIEW</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Every shared type in SATMAP7 lives in one file. Nothing is
+                declared locally and duplicated, so a change to a shape breaks
+                at compile time everywhere it matters.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  7.1.1 The satellite record is the central type. It carries the
+                  NORAD ID, name, international designator, category, both TLE
+                  lines, and a few orbital elements kept for display. This is
+                  the shape written to Redis and the shape sent to the client.
+                </p>
+                <br />
+
+                <p>
+                  7.1.2 The propagated satellite extends that record rather than
+                  replacing it, adding scene position, latitude, longitude,
+                  altitude, and velocity. Anything holding a propagated
+                  satellite also holds the full record, which is why the HUD
+                  panels can render identity and position from a single object.
+                </p>
+                <br />
+
+                <p>
+                  7.1.3 The category type is a fixed union of the 7
+                  constellations. It is not a plain string, so a typo in a
+                  category name fails to compile instead of silently returning
+                  nothing at runtime.
+                </p>
+                <br />
+
+                <p>
+                  7.1.4 Category metadata is stored beside the union: display
+                  label, color in two forms, the matching CelesTrak group name,
+                  and a record cap. Adding a constellation is mostly a matter of
+                  extending the union and adding one entry here. A separate map
+                  holds one representative image per category.
+                </p>
+                <br />
+
+                <p>
+                  7.1.5 The API responses are typed as well, one shape per
+                  route. Trail types round out the file: the four trail modes as
+                  a union, and a trail point as a position with a timestamp.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: one deprecated type remains, an intermediate shape in
+                  the upper case field names CelesTrak uses. It is a holdover
+                  from the JSON format and is scheduled for removal in v2.0, at
+                  which point parsed TLE data will populate the satellite record
+                  directly.
+                </p>
+                <br />
+              </div>
+            </div>
           </>
         </TextBlock>
 
