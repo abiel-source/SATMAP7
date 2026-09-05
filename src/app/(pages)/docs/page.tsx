@@ -600,41 +600,36 @@ const DocsPage = () => {
             <p>Fetching, Caching, and Data Processing</p>
             <br />
 
-            <p>4.1 Caching Protocol</p>
+            <p>6.1 CACHING PROTOCOL</p>
             <br />
 
             <p>
               SATMAP7 features multi-layer caching in order to improve user
-              experience and avoid overloading external servers. Section 4
+              experience and avoid overloading external servers. Section 6
               briefly outlines some of the caching decisions made for v1.0.
             </p>
             <br />
 
             <div className="p-2.5">
               <p>
-                4.1.1 In order to avoid 403 and 503 errors, SATMAP7 caches
-                satellite records with a TTL of 24 hours despite CelesTrak
-                updating their data every 2 hours (to the best of the
-                developer's knowledge). This decision was driven by the
-                empirical observation of a non-trivial chance that CelesTrak's
-                servers might be unavailable. This implies that SATMAP7 accepts
-                a slight tradeoff to maximize connection reliability in exchange
-                for propagation precision (Redis connections appear more
-                reliable than CelesTrak).
+                6.1.1 In order to avoid 403 and 503 errors, SATMAP7 caches
+                satellite records with a TTL of 30 minutes. CelesTrak is
+                therefore contacted at most once per category per half hour, or
+                at most 14 times an hour across all 7 categories. The cache is
+                what keeps traffic to CelesTrak proportional to the number of
+                categories rather than the number of visitors.
               </p>
               <br />
 
               <p className="text-[10px]">
-                NOTE: the decision to increase the TTL is also out of a
-                thoughtfulness to avoid overloading CelesTrak servers. Note that
-                a TLE update every 24 hours in a satellite propagation context
-                is fine for educative purposes but is not suitable for
-                high-precision tracking such as a collision prediction system.
+                NOTE: a TLE refreshed every 30 minutes is fine for educative
+                purposes but is not suitable for high-precision tracking such as
+                a collision prediction system.
               </p>
               <br />
 
               <p>
-                4.1.2 Satellite-specific semantic descriptors are cached with a
+                6.1.2 Satellite-specific semantic descriptors are cached with a
                 TTL of a week on Redis. In a future revision, they may be cached
                 indefinitely to reduce latency. Other media data are not cached
                 but are either stored on SATMAP7's own server (Earth texture
@@ -644,7 +639,7 @@ const DocsPage = () => {
               <br />
 
               <p>
-                4.1.3 Search results are also cached on Redis but with a brief
+                6.1.3 Search results are also cached on Redis but with a brief
                 TTL of 5 minutes. Caching search results are necessary because
                 all relevant search operations are executed on SATMAP7's server.
                 This includes fetching records from Redis (or CelesTrak),
@@ -678,13 +673,107 @@ const DocsPage = () => {
               <br />
             </div>
 
-            <p>3.2 Data Fetching</p>
+            <p>6.2 DATA FETCHING</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                All satellite data comes from the CelesTrak GP API, one request
+                per category, requested as plain TLE text.
+              </p>
+              <br />
 
-            <p>3.3 Data Normalization</p>
+              <div className="p-2.5">
+                <p>
+                  6.2.1 Each of the 7 categories maps to a named CelesTrak
+                  group. Starlink, OneWeb, and the space stations map to groups
+                  of the same name. Navigation maps to the GPS operational
+                  group, debris to a specific collision debris field, and Other
+                  Active to the full active satellite catalog.
+                </p>
+                <br />
+
+                <p>
+                  6.2.2 Every category has a record cap, and a second global cap
+                  can lower all of them at once from the environment. The full
+                  active catalog alone is over 12000 objects, far more than the
+                  scene needs and far more than a browser should be asked to
+                  propagate twice a second.
+                </p>
+                <br />
+
+                <p>
+                  6.2.3 Requests are checked against three caches in order: the
+                  framework fetch cache, Redis, and an in-memory fallback used
+                  when Redis is not configured. Only a miss on all three reaches
+                  CelesTrak. A non-success response throws, and the API route
+                  answers with a 502.
+                </p>
+                <br />
+
+                <p>
+                  6.2.4 The tracker requests all 7 categories in parallel the
+                  moment the scene mounts. Categories arrive independently and
+                  render as they land, so the globe fills in rather than waiting
+                  on the slowest response.
+                </p>
+                <br />
+
+                <p className="text-[#fb923c] text-[11px]">
+                  NOTICE: SATMAP7 v1.0 has no stale fallback. If CelesTrak is
+                  unreachable and nothing is cached, the route returns an error
+                  and that constellation renders nothing. The failure is also
+                  silent, since a failed load is stored but never surfaced in
+                  the HUD, so an outage looks identical to an empty sky. A
+                  long-lived last-known-good copy is planned for v1.1.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>6.3 DATA NORMALIZATION</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Parsed TLE data is converted into one flat record shape before
+                it leaves the server. Everything downstream reads that shape and
+                nothing else.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  6.3.1 CelesTrak names its fields in upper case with
+                  underscores. Normalization renames them, keeps only the fields
+                  the application actually uses, and fills in defaults for the
+                  ones CelesTrak omits from the TLE format.
+                </p>
+                <br />
+
+                <p>
+                  6.3.2 A record missing either TLE line, a NORAD ID, or an
+                  epoch is discarded here rather than downstream. None of those
+                  can be reconstructed, and a record without them cannot be
+                  propagated or identified.
+                </p>
+                <br />
+
+                <p>
+                  6.3.3 Normalization is also the cap boundary. Records are
+                  accumulated until the category limit is reached and the rest
+                  are ignored, so the array written to Redis is already the size
+                  the client will receive.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: an intermediate type still sits between the raw TLE and
+                  the final record. It exists only because the JSON format was
+                  the original data source, and it is marked for removal in
+                  v2.0.
+                </p>
+                <br />
+              </div>
+            </div>
           </>
         </TextBlock>
 
