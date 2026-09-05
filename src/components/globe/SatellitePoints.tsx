@@ -107,35 +107,54 @@ const SAT_VERTEX_SHADER = `
 //  - - - - - - - - - - - - - - - FRAGMENT SHADER - - - - - - - - - - - - - - -
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //    uOpacity     master alpha, applied last
+//    uSpike       strength of the diffraction spikes; 0.0 disables them
 //
 // gl_PointCoord is the position WITHIN the point sprite:
 // (0,0) top-left to (1,1) bottom-right
 //
-// 3 overlapping bands from distance to center:
-//    [0.00, 0.30] -> white center
-//    [0.25, 0.60] -> category color
-//    [0.45, 1.00] -> fade to nothing
+// 4 layers per satellite:
+//    disc   smoothstep        solid body
+//    glint  pow(falloff, 8)   blown-out pinpoint
+//    bloom  pow(falloff, 3.5) thin surround
+//    spike  4-point cross     star-like glinting shape
+//
+// NOTE: the category color is multiplied PAST 1.0 and left to clamp
+// Cyan's red channel is 0.0 so it never reaches white no matter how hard
 
 const SAT_FRAGMENT_SHADER = `
   uniform float uOpacity;
+  uniform float uSpike;
 
   varying vec3 vColor;
 
   void main() {
-    // 0.0 is center of the point; 1.0 is at its edge
-    float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+    // -1.0 to 1.0 across the sprite; (0,0) dead center
+    vec2 p = (gl_PointCoord - vec2(0.5)) * 2.0;
+    float d = length(p);
 
     // outside the inscribed circle where square corners never get drawn
     if (d > 1.0) discard;
 
-    float core = 1.0 - smoothstep(0.0, 0.30, d);
-    float body = 1.0 - smoothstep(0.25, 0.60, d);
-    float glow = 1.0 - smoothstep(0.45, 1.0, d);
+    float falloff = 1.0 - d;
 
-    // category color fades to white at the center
-    vec3 color = mix(vColor, vec3(1.0), core);
+    // minimal solid center 
+    float disc = smoothstep(0.48, 0.14, d);
 
-    float alpha = clamp(body + glow * 0.45, 0.0, 1.0) * uOpacity;
+    // exaggerate pinpoint
+    float glint = pow(falloff, 8.0);
+
+    // thin surround - higher exponent keeps it closer to the center
+    float bloom = pow(falloff, 3.5);
+
+    // thinner arms (higher multiplier) reaching further out (lower exponent)
+    float sx = pow(max(0.0, 1.0 - abs(p.x) * 9.0), 3.0);
+    float sy = pow(max(0.0, 1.0 - abs(p.y) * 9.0), 3.0);
+    float spike = (sx + sy) * pow(falloff, 0.8) * uSpike;
+
+    // driven past 1.0 on purpose
+    vec3 color = vColor * (1.0 + 3.0 * glint + 1.6 * spike);
+
+    float alpha = clamp(disc * 0.95 + bloom * 0.22 + spike, 0.0, 1.0) * uOpacity;
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -167,9 +186,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     [category],
   );
 
-  // visual radius in scene units, BEFORE perspective falloff
-  // a plain number, so it is safe in a dependency list without useMemo
-  const pointSize = category === "stations" ? 0.045 : 0.02;
+  const pointSize = category === "stations" ? 0.07 : 0.035;
 
   const material = useMemo(
     () =>
@@ -181,9 +198,10 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
           uScale: { value: 400 },
           uPixelRatio: { value: 1 },
 
-          uMinPixels: { value: category === "stations" ? 6.0 : 3.5 },
-          uMaxPixels: { value: category === "stations" ? 30.0 : 16.0 },
+          uMinPixels: { value: category === "stations" ? 9.0 : 5.0 },
+          uMaxPixels: { value: category === "stations" ? 40.0 : 22.0 },
           uOpacity: { value: 0.95 },
+          uSpike: { value: 0.9 },
         },
         transparent: true,
         depthWrite: false,
@@ -192,8 +210,8 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     [category],
   );
 
-  // Three derives these two internally for PointsMaterial. With a custom shader
-  // we own them, and must resupply them or point size breaks on resize.
+  // NOTE: Three derives these two internally for PointsMaterial, but for custom shaders, we must resupply them,
+  // otherwise point size breaks on resize
   useEffect(() => {
     material.uniforms.uScale.value = canvasSize.height * 0.5;
     material.uniforms.uPixelRatio.value = viewport.dpr;
