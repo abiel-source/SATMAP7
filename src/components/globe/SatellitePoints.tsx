@@ -59,7 +59,7 @@
 
 "use client";
 
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSatMapStore } from "@/store/satmapStore";
@@ -160,25 +160,44 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
   const setPropagated = useSatMapStore((s) => s.setPropagated);
   // const propagated = useSatMapStore((s) => s.propagated);
 
-  const { raycaster, camera } = useThree();
+  const { camera, size: canvasSize, viewport } = useThree();
 
   const catColor = useMemo(
     () => new THREE.Color(CATEGORY_META[category].hexColor),
     [category],
   );
 
+  // visual radius in scene units, BEFORE perspective falloff
+  // a plain number, so it is safe in a dependency list without useMemo
+  const pointSize = category === "stations" ? 0.045 : 0.02;
+
   const material = useMemo(
     () =>
-      new THREE.PointsMaterial({
-        size: category === "stations" ? 0.015 : 0.006,
-        vertexColors: true,
+      new THREE.ShaderMaterial({
+        vertexShader: SAT_VERTEX_SHADER,
+        fragmentShader: SAT_FRAGMENT_SHADER,
+        uniforms: {
+          // placeholders; the effect below corrects them on mount and on resize
+          uScale: { value: 400 },
+          uPixelRatio: { value: 1 },
+
+          uMinPixels: { value: category === "stations" ? 6.0 : 3.5 },
+          uMaxPixels: { value: category === "stations" ? 30.0 : 16.0 },
+          uOpacity: { value: 0.95 },
+        },
         transparent: true,
-        opacity: 0.9,
-        sizeAttenuation: true,
         depthWrite: false,
+        blending: THREE.NormalBlending,
       }),
     [category],
   );
+
+  // Three derives these two internally for PointsMaterial. With a custom shader
+  // we own them, and must resupply them or point size breaks on resize.
+  useEffect(() => {
+    material.uniforms.uScale.value = canvasSize.height * 0.5;
+    material.uniforms.uPixelRatio.value = viewport.dpr;
+  }, [material, canvasSize.height, viewport.dpr]);
 
   const earthSphere = useMemo(
     () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
