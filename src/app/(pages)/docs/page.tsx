@@ -447,17 +447,151 @@ const DocsPage = () => {
             <p>Propagation logic, search logic, TLE parsing, and more.</p>
             <br />
 
-            <p>3.1 Propagation</p>
+            <p>5.1 PROPAGATION</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Propagation runs entirely on the client, using SGP4. It takes
+                the two TLE lines and a moment in time, and returns where the
+                satellite is at that moment.
+              </p>
+              <br />
 
-            <p>3.2 Search</p>
-            <br />
-            <div></div>
+              <div className="p-2.5">
+                <p>
+                  5.1.1 The two TLE lines have to be parsed into the internal
+                  form SGP4 works with before anything can be computed. That
+                  parse is expensive and the result never changes, so it is done
+                  once per satellite and kept for the rest of the session.
+                  Computing a position from it is cheap by comparison.
+                </p>
+                <br />
 
-            <p>3.3 TLE Parsing</p>
+                <p>
+                  5.1.2 SGP4 returns coordinates in an Earth-centered frame that
+                  treats Z as up. Three treats Y as up, so the axes are swapped
+                  and the whole result is scaled down until the radius of the
+                  Earth equals exactly 1.0. The scene is built around that unit.
+                </p>
+                <br />
+
+                <p>
+                  5.1.3 Latitude, longitude, and altitude need one more input:
+                  how far the Earth has rotated at that instant. That angle is
+                  Greenwich Mean Sidereal Time, computed for the same timestamp
+                  and used to convert the position into ground coordinates.
+                  Velocity is the length of the velocity vector SGP4 returns
+                  alongside the position.
+                </p>
+                <br />
+
+                <p>
+                  5.1.4 Orbit trails reuse the same routine, just called
+                  repeatedly. A history trail steps backward 90 minutes in 30
+                  second intervals. A full orbit steps forward one orbital
+                  period in 60 second intervals, where the period is derived
+                  from how many revolutions per day the TLE reports.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: a satellite that fails to propagate returns nothing and
+                  is skipped rather than crashing the frame. This is the source
+                  of the record alignment issue described in section 8.2.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>5.2 SEARCH</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Search runs on the server. The client sends the query to an API
+                route and renders whatever comes back.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  5.2.1 Queries under two characters return nothing without
+                  doing any work. Typing is debounced on the client, so a query
+                  is only sent once the user pauses.
+                </p>
+                <br />
+
+                <p>
+                  5.2.2 The route pulls all 7 categories out of the cache,
+                  fetching any that are missing, and flattens them into one
+                  list. A satellite matches if the query appears in its name,
+                  its NORAD ID, or its international designator. Results are
+                  capped at 50.
+                </p>
+                <br />
+
+                <p>
+                  5.2.3 Every result set is cached for 5 minutes under the query
+                  string itself. Repeated searches for the same term skip the
+                  flattening and filtering entirely.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>5.3 TLE PARSING</p>
+            <br />
+            <div>
+              <p>
+                CelesTrak returns plain text, three lines per satellite: the
+                name, then the two TLE lines.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  5.3.1 Fields are read by column position, not by splitting on
+                  spaces. TLE is a fixed-width format inherited from punch
+                  cards, and the columns are the specification. Splitting on
+                  whitespace would break on any field that happens to be blank
+                  or negative.
+                </p>
+                <br />
+
+                <p>
+                  5.3.2 The first line carries the NORAD catalog number, the
+                  international designator, and the epoch. The epoch is written
+                  as a two digit year followed by a fractional day of the year,
+                  so it has to be rebuilt into a real date. By convention years
+                  00 through 56 mean the 2000s and 57 through 99 mean the 1900s.
+                </p>
+                <br />
+
+                <p>
+                  5.3.3 The second line carries the orbital elements themselves:
+                  inclination, right ascension of the ascending node,
+                  eccentricity, argument of perigee, mean anomaly, and mean
+                  motion. Eccentricity is stored without its leading zero and
+                  decimal point, which have to be put back before the number
+                  means anything.
+                </p>
+                <br />
+
+                <p>
+                  5.3.4 Anything missing a NORAD ID, an epoch, or either TLE
+                  line is dropped. A partial record cannot be propagated, so
+                  there is no reason to carry it further.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: CelesTrak also offers a JSON format, which SATMAP7 does
+                  not use. The JSON response gives the orbital elements as
+                  separate fields but omits the raw TLE lines, and SGP4 needs
+                  those lines directly.
+                </p>
+                <br />
+              </div>
+            </div>
           </>
         </TextBlock>
 
