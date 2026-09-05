@@ -15,7 +15,7 @@ const DocsPage = () => {
         menuOpen ? "invisible" : "visible"
       }`}
     >
-      <HeaderBlock header="Docs v1.0 (under construction)" />
+      <HeaderBlock header="Docs v1.0" />
 
       <div className="flex flex-col gap-2.5 overflow-y-auto">
         {/* <SuccessBlock eyebrow={null}>SATMAP7 v1.0 is stable.</SuccessBlock> */}
@@ -209,11 +209,85 @@ const DocsPage = () => {
 
             <p>3.1 GLOBAL STATE MANAGEMENT</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                All shared state lives in a single Zustand store. Any component
+                can read any field without prop drilling, and any component can
+                write to it.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  3.1.1 Satellite records are stored per category. Each of the 7
+                  categories holds its own record array, visibility flag, and
+                  load status. The tracker requests every category once on
+                  mount, and each response is written into the store.
+                </p>
+                <br />
+
+                <p>
+                  3.1.2 Propagated positions are held in a separate map, keyed
+                  by NORAD ID. The map is rewritten on every propagation tick
+                  and carries the live position, altitude, and velocity of each
+                  loaded satellite. The HUD panels read their numbers from here.
+                </p>
+                <br />
+
+                <p>
+                  3.1.3 The rest is interface state: the selected satellite, the
+                  hovered satellite, the orbital trail mode, the search query
+                  and results, and panel visibility. Keeping selection in the
+                  store is what lets the search bar, the info panel, and the
+                  scene agree without passing props between them.
+                </p>
+                <br />
+
+                <p>
+                  3.1.4 Components subscribe to single fields, not to the whole
+                  store. A component that reads the hovered satellite re-renders
+                  when the hovered satellite changes and at no other time. This
+                  matters because some fields update at a high rate.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: the propagated map is the deliberate exception. It is
+                  rewritten twice a second, so components that need one position
+                  read it directly instead of subscribing. Subscribing would
+                  re-render the entire scene on every tick.
+                </p>
+                <br />
+              </div>
+            </div>
 
             <p>3.2 LOCAL STATE MANAGEMENT</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Anything only one component needs stays inside that component.
+                The store is reserved for state that is genuinely shared.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  3.2.1 Geometry buffers are local. Each category builds its own
+                  position and color buffers and writes new coordinates straight
+                  into them. These are GPU data, not application state, and
+                  nothing outside the component reads them.
+                </p>
+                <br />
+
+                <p>
+                  3.2.2 Values that change every frame are held in refs rather
+                  than state. A ref can be updated without causing a re-render,
+                  which is what lets the scene redraw on the animation frame
+                  instead of the React render cycle.
+                </p>
+                <br />
+              </div>
+            </div>
           </>
         </TextBlock>
 
