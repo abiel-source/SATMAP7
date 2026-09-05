@@ -296,25 +296,149 @@ const DocsPage = () => {
             <p>An outline of the 3D graphics scene implementation.</p>
             <br />
 
-            <p>3.1 Earth Texture Shaders</p>
+            <p>4.1 EARTH TEXTURE SHADERS</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                The Earth is one sphere drawn with a custom shader, wrapped in a
+                second sphere that produces the atmosphere.
+              </p>
+              <br />
 
-            <p>3.2 Satellite Propagation</p>
-            <br />
-            <div></div>
+              <div className="p-2.5">
+                <p>
+                  4.1.1 Two NASA textures are loaded, one daylit and one
+                  nighttime. The shader picks between them using the angle
+                  between the surface and a fixed sun direction, fading across
+                  the terminator rather than cutting a hard line. City lights on
+                  the night side are brightened, and the day side carries a
+                  faint specular highlight over the oceans.
+                </p>
+                <br />
 
-            <p>3.3 Orbit Controls</p>
-            <br />
-            <div></div>
+                <p>
+                  4.1.2 The atmosphere is a second sphere, two percent larger,
+                  rendered inside-out so only its rim is visible behind the
+                  planet. Rim brightness is driven by viewing angle, tinted
+                  blue where the sun hits and darker on the night side.
+                </p>
+                <br />
 
-            <p>3.4 Satellite Selection Animation</p>
-            <br />
-            <div></div>
+                <p>
+                  4.1.3 A latitude and longitude grid is drawn every 30 degrees,
+                  sitting just above the surface so it never fights the texture
+                  for depth.
+                </p>
+                <br />
+              </div>
+            </div>
 
-            <p>3.5 Starfield Background</p>
+            <p>4.2 SATELLITE PROPAGATION</p>
             <br />
-            <div></div>
+            <div>
+              <p>
+                Every category is drawn as a single points object. All of its
+                satellites live in one buffer and reach the GPU in one draw
+                call.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  4.2.1 Positions are rewritten twice a second, not every frame.
+                  The buffer is flagged as changed and uploaded before the next
+                  draw. Frames in between redraw the same data.
+                </p>
+                <br />
+
+                <p>
+                  4.2.2 Each point is shaded individually rather than filled
+                  with one flat color. The shader draws a solid center, a
+                  blown-out pinpoint, a thin surround, and a four-point cross,
+                  which is what gives a satellite the look of a distant star.
+                </p>
+                <br />
+
+                <p>
+                  4.2.3 Point size shrinks with distance the way a real object
+                  would, but is clamped at both ends. The floor keeps far
+                  satellites from falling below a single pixel and vanishing.
+                  The ceiling keeps near ones from swelling into blobs.
+                </p>
+                <br />
+
+                <p className="text-[10px]">
+                  NOTE: the bounding sphere is set by hand, once, to a fixed
+                  radius wide enough to contain geostationary orbit. Three
+                  normally recomputes it whenever vertices move, which would
+                  mean walking every satellite twice a second for no benefit.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>4.3 ORBIT CONTROLS</p>
+            <br />
+            <div>
+              <p>
+                Camera movement uses standard orbit controls with panning
+                disabled, so the Earth stays centered no matter how the user
+                drags. Zoom is clamped between just above the surface and far
+                enough out to see geostationary orbit in frame. Damping is
+                enabled, so movement carries a little momentum instead of
+                stopping dead.
+              </p>
+              <br />
+            </div>
+
+            <p>4.4 SATELLITE SELECTION ANIMATION</p>
+            <br />
+            <div>
+              <p>
+                Selecting a satellite flies the camera to it. The animation is
+                deliberately simple and always interruptible.
+              </p>
+              <br />
+
+              <div className="p-2.5">
+                <p>
+                  4.4.1 The destination is a point in the same direction as the
+                  satellite, half a unit further out from the center of the
+                  Earth. This frames the satellite without putting the camera
+                  inside it.
+                </p>
+                <br />
+
+                <p>
+                  4.4.2 Each frame the camera moves a fraction of the remaining
+                  distance. That fraction is scaled by frame time, so the flight
+                  takes the same duration on a slow machine as on a fast one.
+                  The animation ends once the camera is within a small threshold
+                  of the destination.
+                </p>
+                <br />
+
+                <p>
+                  4.4.3 Any user input cancels it immediately. The controller
+                  listens for the moment the user grabs the controls and drops
+                  the animation on the spot, so the camera never fights the
+                  person driving it.
+                </p>
+                <br />
+              </div>
+            </div>
+
+            <p>4.5 STARFIELD BACKGROUND</p>
+            <br />
+            <div>
+              <p>
+                The background is 6000 points scattered across a spherical shell
+                far outside the scene, each at a random distance and a random
+                brightness. Nothing else in the scene reaches that far out, so
+                the starfield never intersects the Earth or the satellites.
+              </p>
+              <br />
+            </div>
           </>
         </TextBlock>
 
