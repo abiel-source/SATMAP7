@@ -71,6 +71,40 @@ import { CATEGORY_META } from "@/types/satellite";
 // const PROPAGATION_INTERVAL = 1000;
 const PROPAGATION_INTERVAL = 500;
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - VERTEX SHADER - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//    uScale       canvas height / 2, in CSS pixels
+//    uPixelRatio  device pixel ratio
+//    uMinPixels   floor, in CSS pixels
+//    uMaxPixels   ceiling, in CSS pixels
+const SAT_VERTEX_SHADER = `
+  attribute float size;
+  attribute vec3 satColor;
+
+  uniform float uScale;
+  uniform float uPixelRatio;
+  uniform float uMinPixels;
+  uniform float uMaxPixels;
+
+  varying vec3 vColor;
+
+  void main() {
+    vColor = satColor;
+
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+
+    // same perspective falloff PointsMaterial used (now bounded)
+    float attenuated = size * uScale / -mvPosition.z;
+    gl_PointSize = clamp(attenuated, uMinPixels, uMaxPixels) * uPixelRatio;
+
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 interface SatellitePointsProps {
   category: SatelliteCategory;
 }
@@ -91,7 +125,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
 
   const catColor = useMemo(
     () => new THREE.Color(CATEGORY_META[category].hexColor),
-    [category]
+    [category],
   );
 
   const material = useMemo(
@@ -104,12 +138,12 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
         sizeAttenuation: true,
         depthWrite: false,
       }),
-    [category]
+    [category],
   );
 
   const earthSphere = useMemo(
     () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
-    []
+    [],
   );
 
   // simple occlusion check is logically sufficient
@@ -126,10 +160,11 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
         hit.distanceTo(camera.position) < satPos.distanceTo(camera.position)
       );
     },
-    [camera, earthSphere]
+    [camera, earthSphere],
   );
 
   // Build geometry buffers
+  // CAUTION: posArray is never used. Geometry position rewrite is done by accessing geometry.attributes.position
   const { geometry, posArray } = useMemo(() => {
     const count = records.length;
     const geo = new THREE.BufferGeometry();
@@ -215,7 +250,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       }
       setHovered(sat);
     },
-    [records, setHovered, isOccluded]
+    [records, setHovered, isOccluded],
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -239,7 +274,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
 
       setSelected(sat);
     },
-    [records, setSelected, isOccluded]
+    [records, setSelected, isOccluded],
   );
 
   if (!visible || records.length === 0) return null;
@@ -267,7 +302,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
         THREE.Points.prototype.raycast.call(
           pointsRef.current,
           raycaster,
-          intersects
+          intersects,
         );
 
         params.threshold = originalThreshold;
