@@ -78,6 +78,7 @@ const PROPAGATION_INTERVAL = 500;
 //    uPixelRatio  device pixel ratio
 //    uMinPixels   floor, in CSS pixels
 //    uMaxPixels   ceiling, in CSS pixels
+
 const SAT_VERTEX_SHADER = `
   attribute float size;
   attribute vec3 satColor;
@@ -94,11 +95,49 @@ const SAT_VERTEX_SHADER = `
 
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
 
-    // same perspective falloff PointsMaterial used (now bounded)
+    // same perspective falloff PointsMaterial used - now with floor/ceiling bounds
     float attenuated = size * uScale / -mvPosition.z;
     gl_PointSize = clamp(attenuated, uMinPixels, uMaxPixels) * uPixelRatio;
 
     gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - FRAGMENT SHADER - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//    uOpacity     master alpha, applied last
+//
+// gl_PointCoord is the position WITHIN the point sprite:
+// (0,0) top-left to (1,1) bottom-right
+//
+// 3 overlapping bands from distance to center:
+//    [0.00, 0.30] -> white center
+//    [0.25, 0.60] -> category color
+//    [0.45, 1.00] -> fade to nothing
+
+const SAT_FRAGMENT_SHADER = `
+  uniform float uOpacity;
+
+  varying vec3 vColor;
+
+  void main() {
+    // 0.0 is center of the point; 1.0 is at its edge
+    float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+
+    // outside the inscribed circle where square corners never get drawn
+    if (d > 1.0) discard;
+
+    float core = 1.0 - smoothstep(0.0, 0.30, d);
+    float body = 1.0 - smoothstep(0.25, 0.60, d);
+    float glow = 1.0 - smoothstep(0.45, 1.0, d);
+
+    // category color fades to white at the center
+    vec3 color = mix(vColor, vec3(1.0), core);
+
+    float alpha = clamp(body + glow * 0.45, 0.0, 1.0) * uOpacity;
+
+    gl_FragColor = vec4(color, alpha);
   }
 `;
 //  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
