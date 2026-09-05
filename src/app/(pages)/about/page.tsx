@@ -43,12 +43,9 @@ const AboutPage = () => {
         </TextBlock>
 
         <TextBlock eyebrow="Developer">
-          I'm Abiel Kim, a CS graduate (AI specialization) from Simon Fraser
-          University. I'm very friendly! Find me at my personal website here:{" "}
-          <a href="https://abielkim.vercel.app/">
-            https://abielkim.vercel.app/
-          </a>
-          .
+          Abiel Kim, a Computer Science graduate (AI specialization) from Simon
+          Fraser University. Contact:{" "}
+          <a href="mailto:abielkim.tech@gmail.com">abielkim.tech@gmail.com</a>
         </TextBlock>
       </div>
     </div>
