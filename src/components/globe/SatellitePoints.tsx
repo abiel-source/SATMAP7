@@ -59,7 +59,7 @@
 
 "use client";
 
-import { useRef, useMemo, useCallback, useEffect } from "react";
+import { useRef, useMemo, useCallback } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useSatMapStore } from "@/store/satmapStore";
@@ -179,7 +179,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
   const setPropagated = useSatMapStore((s) => s.setPropagated);
   // const propagated = useSatMapStore((s) => s.propagated);
 
-  const { camera, size: canvasSize, viewport } = useThree();
+  const { camera } = useThree();
 
   const catColor = useMemo(
     () => new THREE.Color(CATEGORY_META[category].hexColor),
@@ -210,12 +210,6 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     [category],
   );
 
-  // NOTE: Three derives these two internally for PointsMaterial, but for custom shaders, we must resupply them,
-  // otherwise point size breaks on resize
-  useEffect(() => {
-    material.uniforms.uScale.value = canvasSize.height * 0.5;
-    material.uniforms.uPixelRatio.value = viewport.dpr;
-  }, [material, canvasSize.height, viewport.dpr]);
 
   const earthSphere = useMemo(
     () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
@@ -281,8 +275,16 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
   }, [records, catColor, category, pointSize]);
 
   // main animation frame
-  useFrame((_, delta) => {
+  useFrame((state) => {
     if (!pointsRef.current || !visible || records.length === 0) return;
+
+    // NOTE: Three derives these two internally for PointsMaterial. Custom
+    // shaders must resupply them or point size breaks on resize.
+    // Reached through pointsRef rather than the memoized `material` binding:
+    // refs are the sanctioned mutable handle, memo results are treated as frozen.
+    const mat = pointsRef.current.material as THREE.ShaderMaterial;
+    mat.uniforms.uScale.value = state.size.height * 0.5;
+    mat.uniforms.uPixelRatio.value = state.viewport.dpr;
 
     const now = performance.now();
     if (now - lastPropTime.current < PROPAGATION_INTERVAL) {
