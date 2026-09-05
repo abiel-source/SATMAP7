@@ -238,11 +238,16 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       cols[i * 3] = catColor.r;
       cols[i * 3 + 1] = catColor.g;
       cols[i * 3 + 2] = catColor.b;
-      sizes[i] = category === "stations" ? 0.015 : 0.006;
+      sizes[i] = pointSize;
     }
 
+    // "satColor" NOT "color": three reserves the name `color` and declares it in
+    // the shader prelude only when material.vertexColors is set. Owning a custom
+    // name avoids both the duplicate-declaration and undeclared-identifier cases.
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+    geo.setAttribute("satColor", new THREE.BufferAttribute(cols, 3));
+
+    // read by the vertex shader now; PointsMaterial ignored this attribute
     geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
 
     // manually compute the bounding sphere once
@@ -255,7 +260,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 7.0);
 
     return { geometry: geo, posArray: pos };
-  }, [records, catColor, category]);
+  }, [records, catColor, category, pointSize]);
 
   // main animation frame
   useFrame((_, delta) => {
