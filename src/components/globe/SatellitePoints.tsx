@@ -210,7 +210,6 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     [category],
   );
 
-
   const earthSphere = useMemo(
     () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
     [],
@@ -374,7 +373,9 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       raycast={(raycaster, intersects) => {
         if (!pointsRef.current) return;
 
-        const threshold = category === "stations" ? 0.02 : 0.015;
+        // a sprite of size x units covers a world radius of ~0.207x
+        // somewhat arbitrarily set raycast threshold to 2.5 times that
+        const threshold = pointSize * 0.52;
 
         const params = raycaster.params.Points ?? { threshold: 1 };
         const originalThreshold = params.threshold;
