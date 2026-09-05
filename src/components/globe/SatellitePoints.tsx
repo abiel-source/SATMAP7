@@ -71,6 +71,98 @@ import { CATEGORY_META } from "@/types/satellite";
 // const PROPAGATION_INTERVAL = 1000;
 const PROPAGATION_INTERVAL = 500;
 
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - VERTEX SHADER - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//    uScale       canvas height / 2, in CSS pixels
+//    uPixelRatio  device pixel ratio
+//    uMinPixels   floor, in CSS pixels
+//    uMaxPixels   ceiling, in CSS pixels
+
+const SAT_VERTEX_SHADER = `
+  attribute float size;
+  attribute vec3 satColor;
+
+  uniform float uScale;
+  uniform float uPixelRatio;
+  uniform float uMinPixels;
+  uniform float uMaxPixels;
+
+  varying vec3 vColor;
+
+  void main() {
+    vColor = satColor;
+
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+
+    // same perspective falloff PointsMaterial used - now with floor/ceiling bounds
+    float attenuated = size * uScale / -mvPosition.z;
+    gl_PointSize = clamp(attenuated, uMinPixels, uMaxPixels) * uPixelRatio;
+
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - FRAGMENT SHADER - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//    uOpacity     master alpha, applied last
+//    uSpike       strength of the diffraction spikes; 0.0 disables them
+//
+// gl_PointCoord is the position WITHIN the point sprite:
+// (0,0) top-left to (1,1) bottom-right
+//
+// 4 layers per satellite:
+//    disc   smoothstep        solid body
+//    glint  pow(falloff, 8)   blown-out pinpoint
+//    bloom  pow(falloff, 3.5) thin surround
+//    spike  4-point cross     star-like glinting shape
+//
+// NOTE: the category color is multiplied PAST 1.0 and left to clamp
+// Cyan's red channel is 0.0 so it never reaches white no matter how hard
+
+const SAT_FRAGMENT_SHADER = `
+  uniform float uOpacity;
+  uniform float uSpike;
+
+  varying vec3 vColor;
+
+  void main() {
+    // -1.0 to 1.0 across the sprite; (0,0) dead center
+    vec2 p = (gl_PointCoord - vec2(0.5)) * 2.0;
+    float d = length(p);
+
+    // outside the inscribed circle where square corners never get drawn
+    if (d > 1.0) discard;
+
+    float falloff = 1.0 - d;
+
+    // minimal solid center 
+    float disc = smoothstep(0.48, 0.14, d);
+
+    // exaggerate pinpoint
+    float glint = pow(falloff, 8.0);
+
+    // thin surround - higher exponent keeps it closer to the center
+    float bloom = pow(falloff, 3.5);
+
+    // thinner arms (higher multiplier) reaching further out (lower exponent)
+    float sx = pow(max(0.0, 1.0 - abs(p.x) * 9.0), 3.0);
+    float sy = pow(max(0.0, 1.0 - abs(p.y) * 9.0), 3.0);
+    float spike = (sx + sy) * pow(falloff, 0.8) * uSpike;
+
+    // driven past 1.0 on purpose
+    vec3 color = vColor * (1.0 + 3.0 * glint + 1.6 * spike);
+
+    float alpha = clamp(disc * 0.95 + bloom * 0.22 + spike, 0.0, 1.0) * uOpacity;
+
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 interface SatellitePointsProps {
   category: SatelliteCategory;
 }
@@ -87,29 +179,40 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
   const setPropagated = useSatMapStore((s) => s.setPropagated);
   // const propagated = useSatMapStore((s) => s.propagated);
 
-  const { raycaster, camera } = useThree();
+  const { camera } = useThree();
 
   const catColor = useMemo(
     () => new THREE.Color(CATEGORY_META[category].hexColor),
-    [category]
+    [category],
   );
+
+  const pointSize = category === "stations" ? 0.07 : 0.035;
 
   const material = useMemo(
     () =>
-      new THREE.PointsMaterial({
-        size: category === "stations" ? 0.015 : 0.006,
-        vertexColors: true,
+      new THREE.ShaderMaterial({
+        vertexShader: SAT_VERTEX_SHADER,
+        fragmentShader: SAT_FRAGMENT_SHADER,
+        uniforms: {
+          // placeholders; the effect below corrects them on mount and on resize
+          uScale: { value: 400 },
+          uPixelRatio: { value: 1 },
+
+          uMinPixels: { value: category === "stations" ? 9.0 : 5.0 },
+          uMaxPixels: { value: category === "stations" ? 40.0 : 22.0 },
+          uOpacity: { value: 0.95 },
+          uSpike: { value: 0.9 },
+        },
         transparent: true,
-        opacity: 0.9,
-        sizeAttenuation: true,
         depthWrite: false,
+        blending: THREE.NormalBlending,
       }),
-    [category]
+    [category],
   );
 
   const earthSphere = useMemo(
     () => new THREE.Sphere(new THREE.Vector3(0, 0, 0), 1.0),
-    []
+    [],
   );
 
   // simple occlusion check is logically sufficient
@@ -126,10 +229,11 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
         hit.distanceTo(camera.position) < satPos.distanceTo(camera.position)
       );
     },
-    [camera, earthSphere]
+    [camera, earthSphere],
   );
 
   // Build geometry buffers
+  // CAUTION: posArray is never used. Geometry position rewrite is done by accessing geometry.attributes.position
   const { geometry, posArray } = useMemo(() => {
     const count = records.length;
     const geo = new THREE.BufferGeometry();
@@ -145,11 +249,16 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       cols[i * 3] = catColor.r;
       cols[i * 3 + 1] = catColor.g;
       cols[i * 3 + 2] = catColor.b;
-      sizes[i] = category === "stations" ? 0.015 : 0.006;
+      sizes[i] = pointSize;
     }
 
+    // "satColor" NOT "color": three reserves the name `color` and declares it in
+    // the shader prelude only when material.vertexColors is set. Owning a custom
+    // name avoids both the duplicate-declaration and undeclared-identifier cases.
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(cols, 3));
+    geo.setAttribute("satColor", new THREE.BufferAttribute(cols, 3));
+
+    // read by the vertex shader now; PointsMaterial ignored this attribute
     geo.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
 
     // manually compute the bounding sphere once
@@ -162,11 +271,19 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 7.0);
 
     return { geometry: geo, posArray: pos };
-  }, [records, catColor, category]);
+  }, [records, catColor, category, pointSize]);
 
   // main animation frame
-  useFrame((_, delta) => {
+  useFrame((state) => {
     if (!pointsRef.current || !visible || records.length === 0) return;
+
+    // NOTE: Three derives these two internally for PointsMaterial. Custom
+    // shaders must resupply them or point size breaks on resize.
+    // Reached through pointsRef rather than the memoized `material` binding:
+    // refs are the sanctioned mutable handle, memo results are treated as frozen.
+    const mat = pointsRef.current.material as THREE.ShaderMaterial;
+    mat.uniforms.uScale.value = state.size.height * 0.5;
+    mat.uniforms.uPixelRatio.value = state.viewport.dpr;
 
     const now = performance.now();
     if (now - lastPropTime.current < PROPAGATION_INTERVAL) {
@@ -215,7 +332,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       }
       setHovered(sat);
     },
-    [records, setHovered, isOccluded]
+    [records, setHovered, isOccluded],
   );
 
   const handlePointerLeave = useCallback(() => {
@@ -239,7 +356,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
 
       setSelected(sat);
     },
-    [records, setSelected, isOccluded]
+    [records, setSelected, isOccluded],
   );
 
   if (!visible || records.length === 0) return null;
@@ -256,7 +373,9 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
       raycast={(raycaster, intersects) => {
         if (!pointsRef.current) return;
 
-        const threshold = category === "stations" ? 0.02 : 0.015;
+        // a sprite of size x units covers a world radius of ~0.207x
+        // somewhat arbitrarily set raycast threshold to 2.5 times that
+        const threshold = pointSize * 0.52;
 
         const params = raycaster.params.Points ?? { threshold: 1 };
         const originalThreshold = params.threshold;
@@ -267,7 +386,7 @@ export function SatellitePoints({ category }: SatellitePointsProps) {
         THREE.Points.prototype.raycast.call(
           pointsRef.current,
           raycaster,
-          intersects
+          intersects,
         );
 
         params.threshold = originalThreshold;
